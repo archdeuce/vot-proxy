@@ -2,7 +2,7 @@ import Fastify from "fastify";
 import { fetch, Headers, Request } from "undici";
 
 const fastify = Fastify({ logger: true });
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 
 const version = "1.0.17-node";
 const yandexUserAgent =
