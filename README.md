@@ -54,3 +54,9 @@ sudo nginx -t
 ```bash
 sudo systemctl reload nginx
 ```
+
+## Шаг 5: Проверка работоспособности прокси
+
+```bash
+curl http://your-domain.com/health
+```
