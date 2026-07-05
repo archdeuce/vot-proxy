@@ -45,22 +45,44 @@ async function makeYandexRequest(request, pathname, method) {
     return { status: 204, yandexStatus: "error-request" };
   }
 
-  const yandexResponse = await fetch(
-    "https://api.browser.yandex.ru" + pathname,
-    {
-      method: method,
-      headers: requestInfo.headers,
-      body: new Uint8Array(requestInfo.body),
-    },
-  );
+  // Сохраняем оригинальные заголовки от расширения, но приводим Host и UA к эталону
+  const cleanHeaders = { ...requestInfo.headers };
 
-  const responseBuffer = await yandexResponse.arrayBuffer();
-  return {
-    status: 200,
-    yandexStatus: "success",
-    contentType: yandexResponse.headers.get("content-type"),
-    body: Buffer.from(responseBuffer),
-  };
+  // Удаляем старый хост в любом регистре и пишем правильный
+  Object.keys(cleanHeaders).forEach((key) => {
+    if (key.toLowerCase() === "host") delete cleanHeaders[key];
+  });
+  cleanHeaders["Host"] = "api.browser.yandex.ru";
+  cleanHeaders["User-Agent"] = yandexUserAgent;
+
+  try {
+    const yandexResponse = await fetch(
+      "https://api.browser.yandex.ru" + pathname,
+      {
+        method: method,
+        headers: cleanHeaders,
+        body: new Uint8Array(requestInfo.body),
+      },
+    );
+
+    // ВЫВОД В КОНСОЛЬ ДЛЯ ДЕБАГА
+    console.log(
+      `[Yandex API] ${method} ${pathname} -> Status: ${yandexResponse.status}`,
+    );
+
+    const responseBuffer = await yandexResponse.arrayBuffer();
+
+    return {
+      status: yandexResponse.status, // Пробрасываем реальный статус (400, 403, 200 и т.д.)
+      yandexStatus:
+        yandexResponse.status === 200 ? "success" : "error-yandex-api",
+      contentType: yandexResponse.headers.get("content-type"),
+      body: Buffer.from(responseBuffer),
+    };
+  } catch (err) {
+    console.error(`[Yandex API] Fetch crashed:`, err.message);
+    return { status: 500, body: `Fetch error: ${err.message}` };
+  }
 }
 
 async function handleS3ProxyRequest(type, urlPath, urlSearch) {
@@ -94,23 +116,42 @@ async function handleYAJSONRequest(request, pathname) {
     return { status: 204, yandexStatus: "error-request" };
   }
 
-  const jsonResponse = await fetch(`https://api.browser.yandex.ru${pathname}`, {
-    method: "PUT",
-    headers: {
-      "User-Agent": yandexUserAgent,
-      "Content-Type": "application/json",
-      ...requestInfo.headers,
-    },
-    body: JSON.stringify(requestInfo.body),
+  const cleanHeaders = { ...requestInfo.headers };
+  Object.keys(cleanHeaders).forEach((key) => {
+    if (key.toLowerCase() === "host") delete cleanHeaders[key];
   });
+  cleanHeaders["Host"] = "api.browser.yandex.ru";
+  cleanHeaders["User-Agent"] = yandexUserAgent;
 
-  const responseBuffer = await jsonResponse.arrayBuffer();
-  return {
-    status: 200,
-    yandexStatus: "success",
-    contentType: jsonResponse.headers.get("content-type"),
-    body: Buffer.from(responseBuffer),
-  };
+  try {
+    const jsonResponse = await fetch(
+      `https://api.browser.yandex.ru${pathname}`,
+      {
+        method: "PUT",
+        headers: cleanHeaders,
+        body:
+          typeof requestInfo.body === "string"
+            ? requestInfo.body
+            : JSON.stringify(requestInfo.body),
+      },
+    );
+
+    console.log(
+      `[Yandex JSON] PUT ${pathname} -> Status: ${jsonResponse.status}`,
+    );
+
+    const responseBuffer = await jsonResponse.arrayBuffer();
+    return {
+      status: jsonResponse.status, // Пробрасываем реальный статус
+      yandexStatus:
+        jsonResponse.status === 200 ? "success" : "error-yandex-json",
+      contentType: jsonResponse.headers.get("content-type"),
+      body: Buffer.from(responseBuffer),
+    };
+  } catch (err) {
+    console.error(`[Yandex JSON] Fetch crashed:`, err.message);
+    return { status: 500, body: `Fetch error: ${err.message}` };
+  }
 }
 
 // Главный роутер, повторяющий логику воркера
